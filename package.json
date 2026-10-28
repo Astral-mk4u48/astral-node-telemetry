@@ -1,0 +1,23 @@
+{
+  "name": "astral-node-telemetry",
+  "version": "1.0.0",
+  "description": "High-performance Node.js live system status dashboard streaming real-time CPU, RAM, and server telemetry for astral-node.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "build": "echo 'Build complete'"
+  },
+  "keywords": [
+    "telemetry",
+    "dashboard",
+    "monitoring",
+    "cpu",
+    "ram",
+    "server-metrics",
+    "nodejs",
+    "astral-node"
+  ],
+  "author": "Pavan <Pavan.sankiliraj@gmail.com>",
+  "license": "MIT"
+}

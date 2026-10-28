@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>astral-node • Live Telemetry Dashboard</title>
+  <meta name="description" content="High-performance Node.js live system status dashboard streaming real-time CPU, RAM, and server telemetry for astral-node.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="background-glow glow-1"></div>
+  <div class="background-glow glow-2"></div>
+
+  <div class="app-container">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-title">ASTRAL-NODE // <span class="accent-text">TELEMETRY</span></div>
+          <div class="brand-subtitle">Live Server Status &amp; Performance Telemetry</div>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <div class="host-badge" id="host-badge">
+          <span class="host-icon">💻</span>
+          <span id="system-hostname">Connecting...</span>
+          <span class="platform-chip" id="system-platform">Linux x64</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="stream-status" id="stream-status">
+          <span class="pulse-indicator"></span>
+          <span class="status-label" id="status-label">CONNECTING</span>
+        </div>
+        <button id="toggle-stream-btn" class="btn btn-secondary" title="Pause or Resume Stream">
+          <svg class="btn-icon" id="pause-icon" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="4" width="4" height="16" rx="1"/>
+            <rect x="14" y="4" width="4" height="16" rx="1"/>
+          </svg>
+          <span id="pause-btn-text">Pause</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="dashboard-content">
+      <!-- Top Metrics Cards -->
+      <section class="metrics-grid">
+        <!-- CPU Card -->
+        <div class="metric-card" id="card-cpu">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="card-icon cpu-accent">⚙️</span>
+              <span>CPU Utilization</span>
+            </div>
+            <span class="badge" id="cpu-core-count">4 Cores</span>
+          </div>
+
+          <div class="card-body gauge-container">
+            <div class="circular-progress">
+              <svg class="progress-ring" viewBox="0 0 120 120">
+                <circle class="ring-bg" cx="60" cy="60" r="50"></circle>
+                <circle class="ring-fill cpu-ring" id="cpu-ring-fill" cx="60" cy="60" r="50" stroke-dasharray="314.159" stroke-dashoffset="314.159"></circle>
+              </svg>
+              <div class="ring-content">
+                <span class="ring-value" id="cpu-percent">0.0<small>%</small></span>
+                <span class="ring-subtext">OVERALL</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <div class="footer-row">
+              <span class="label">Load Avg (1, 5, 15m)</span>
+              <span class="value mono" id="cpu-load-avg">0.00 • 0.00 • 0.00</span>
+            </div>
+            <div class="footer-subtext truncate" id="cpu-model">Detecting CPU...</div>
+          </div>
+        </div>
+
+        <!-- RAM Card -->
+        <div class="metric-card" id="card-ram">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="card-icon ram-accent">🧠</span>
+              <span>Memory (RAM)</span>
+            </div>
+            <span class="badge" id="ram-used-tag">0.00 GB</span>
+          </div>
+
+          <div class="card-body gauge-container">
+            <div class="circular-progress">
+              <svg class="progress-ring" viewBox="0 0 120 120">
+                <circle class="ring-bg" cx="60" cy="60" r="50"></circle>
+                <circle class="ring-fill ram-ring" id="ram-ring-fill" cx="60" cy="60" r="50" stroke-dasharray="314.159" stroke-dashoffset="314.159"></circle>
+              </svg>
+              <div class="ring-content">
+                <span class="ring-value" id="ram-percent">0.0<small>%</small></span>
+                <span class="ring-subtext">ALLOCATED</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <div class="footer-row">
+              <span class="label">Usage Breakdown</span>
+              <span class="value mono" id="ram-breakdown">0.0 / 0.0 GB</span>
+            </div>
+            <div class="memory-bar-wrapper">
+              <div class="memory-bar" id="memory-bar-fill" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Uptime Card -->
+        <div class="metric-card" id="card-uptime">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="card-icon uptime-accent">⏱️</span>
+              <span>System & Process Uptime</span>
+            </div>
+            <span class="badge success" id="system-status-chip">Online</span>
+          </div>
+
+          <div class="card-body uptime-display">
+            <div class="uptime-primary">
+              <div class="uptime-val mono" id="system-uptime">0h 0m 0s</div>
+              <div class="uptime-sub">HOST UPTIME</div>
+            </div>
+
+            <div class="uptime-secondary">
+              <div class="mini-stat">
+                <span class="stat-lbl">Process Uptime</span>
+                <span class="stat-val mono" id="process-uptime">0h 0m 0s</span>
+              </div>
+              <div class="mini-stat">
+                <span class="stat-lbl">Process PID</span>
+                <span class="stat-val mono" id="process-pid">--</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <div class="footer-row">
+              <span class="label">Kernel / Release</span>
+              <span class="value mono" id="system-kernel">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Node.js Runtime Card -->
+        <div class="metric-card" id="card-runtime">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="card-icon node-accent">🟢</span>
+              <span>Node.js Environment</span>
+            </div>
+            <span class="badge" id="node-version-badge">v20</span>
+          </div>
+
+          <div class="card-body runtime-metrics">
+            <div class="runtime-row">
+              <span class="rt-label">V8 Heap Used</span>
+              <span class="rt-val mono" id="heap-used">0.0 MB</span>
+            </div>
+            <div class="runtime-progress-track">
+              <div class="runtime-progress-bar" id="heap-progress" style="width: 10%"></div>
+            </div>
+
+            <div class="runtime-row mt-2">
+              <span class="rt-label">V8 Heap Total</span>
+              <span class="rt-val mono" id="heap-total">0.0 MB</span>
+            </div>
+
+            <div class="runtime-row mt-2">
+              <span class="rt-label">Process RSS</span>
+              <span class="rt-val mono" id="process-rss">0.0 MB</span>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <div class="footer-row">
+              <span class="label">Architecture</span>
+              <span class="value mono" id="arch-display">x64</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Live Realtime Chart Section -->
+      <section class="chart-section">
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title-group">
+              <h2 class="section-title">Telemetry Waveform</h2>
+              <span class="section-subtitle">Real-time CPU and RAM utilization stream (rolling 30 samples)</span>
+            </div>
+
+            <div class="chart-legend">
+              <div class="legend-item">
+                <span class="legend-color-dot cpu-dot"></span>
+                <span>CPU Usage (%)</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-color-dot ram-dot"></span>
+                <span>RAM Usage (%)</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="canvas-container">
+            <canvas id="telemetryChart" height="220"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Per-Core Breakdown & System Info -->
+      <section class="split-section">
+        <!-- CPU Per-Core Activity -->
+        <div class="split-card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="card-icon">⚡</span>
+              <span>Per-Core CPU Load</span>
+            </div>
+            <span class="badge" id="core-count-tag">Active</span>
+          </div>
+
+          <div class="cores-container" id="cores-container">
+            <div class="core-skeleton">Loading cores telemetry...</div>
+          </div>
+        </div>
+
+        <!-- Host Specifications -->
+        <div class="split-card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="card-icon">📋</span>
+              <span>System & Environment Specs</span>
+            </div>
+            <span class="badge success">Verified</span>
+          </div>
+
+          <div class="specs-grid">
+            <div class="spec-row">
+              <span class="spec-name">Hostname</span>
+              <span class="spec-val mono" id="spec-hostname">--</span>
+            </div>
+            <div class="spec-row">
+              <span class="spec-name">OS Platform</span>
+              <span class="spec-val mono" id="spec-platform">--</span>
+            </div>
+            <div class="spec-row">
+              <span class="spec-name">Kernel Version</span>
+              <span class="spec-val mono" id="spec-release">--</span>
+            </div>
+            <div class="spec-row">
+              <span class="spec-name">System Architecture</span>
+              <span class="spec-val mono" id="spec-arch">--</span>
+            </div>
+            <div class="spec-row">
+              <span class="spec-name">Node.js Engine</span>
+              <span class="spec-val mono" id="spec-node">--</span>
+            </div>
+            <div class="spec-row">
+              <span class="spec-name">Total Physical RAM</span>
+              <span class="spec-val mono" id="spec-ram">--</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <div>
+        astral-node Live Telemetry • Engineered by <a href="https://github.com/Astral-mk4u48" target="_blank" rel="noopener">Pavan (@Astral-mk4u48)</a>
+      </div>
+      <div class="footer-meta">
+        <span class="mono" id="last-updated-time">Last update: --</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -158,40 +158,40 @@
           </div>
         </div>
 
-        <!-- Node.js Runtime Card -->
+        <!-- Upstash Redis Relay Card -->
         <div class="metric-card" id="card-runtime">
           <div class="card-header">
             <div class="card-title">
-              <span class="card-icon node-accent">🟢</span>
-              <span>Node.js Environment</span>
+              <span class="card-icon node-accent">⚡</span>
+              <span>Redis Relay Telemetry</span>
             </div>
-            <span class="badge" id="node-version-badge">v20</span>
+            <span class="badge success" id="redis-status-badge">Synced</span>
           </div>
 
           <div class="card-body runtime-metrics">
             <div class="runtime-row">
-              <span class="rt-label">V8 Heap Used</span>
-              <span class="rt-val mono" id="heap-used">0.0 MB</span>
+              <span class="rt-label">Target Node</span>
+              <span class="rt-val mono" id="relay-host">astral-node</span>
             </div>
             <div class="runtime-progress-track">
-              <div class="runtime-progress-bar" id="heap-progress" style="width: 10%"></div>
+              <div class="runtime-progress-bar" id="sync-progress" style="width: 100%"></div>
             </div>
 
             <div class="runtime-row mt-2">
-              <span class="rt-label">V8 Heap Total</span>
-              <span class="rt-val mono" id="heap-total">0.0 MB</span>
+              <span class="rt-label">Provider</span>
+              <span class="rt-val mono" id="relay-provider">Upstash Redis</span>
             </div>
 
             <div class="runtime-row mt-2">
-              <span class="rt-label">Process RSS</span>
-              <span class="rt-val mono" id="process-rss">0.0 MB</span>
+              <span class="rt-label">Sync Latency / Age</span>
+              <span class="rt-val mono" id="relay-age">0s ago</span>
             </div>
           </div>
 
           <div class="card-footer">
             <div class="footer-row">
-              <span class="label">Architecture</span>
-              <span class="value mono" id="arch-display">x64</span>
+              <span class="label">Poll Cadence</span>
+              <span class="value mono" id="relay-cadence">Every 3s</span>
             </div>
           </div>
         </div>

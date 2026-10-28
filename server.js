@@ -54,6 +54,25 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Telemetry endpoint (Upstash Redis integration)
+  if (pathname === '/api/telemetry') {
+    if (!res.status) {
+      res.status = (code) => {
+        res.statusCode = code;
+        return res;
+      };
+    }
+    if (!res.json) {
+      res.json = (data) => {
+        res.setHeader('Content-Type', 'application/json; charset=UTF-8');
+        res.end(JSON.stringify(data));
+      };
+    }
+    const telemetryHandler = require('./api/telemetry');
+    telemetryHandler(req, res);
+    return;
+  }
+
   // REST API Endpoint
   if (pathname === '/api/metrics') {
     res.writeHead(200, {

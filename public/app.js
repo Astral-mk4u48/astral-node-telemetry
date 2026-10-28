@@ -1,15 +1,15 @@
-// Pulse Live Status Dashboard - Client Logic
+// Astral Node Telemetry - Upstash Redis Live Client
 (function () {
   'use strict';
 
   // Constants
   const MAX_HISTORY = 30;
   const CIRCLE_CIRCUMFERENCE = 2 * Math.PI * 50; // ~314.159
+  const POLL_CADENCE_MS = 3000;
 
   // State
   let isPaused = false;
-  let eventSource = null;
-  let fallbackInterval = null;
+  let pollTimer = null;
   const historyData = [];
 
   // DOM Elements
@@ -41,11 +41,9 @@
   const elSystemUptime = document.getElementById('system-uptime');
   const elProcessUptime = document.getElementById('process-uptime');
   const elProcessPid = document.getElementById('process-pid');
-  const elNodeVersionBadge = document.getElementById('node-version-badge');
-  const elHeapUsed = document.getElementById('heap-used');
-  const elHeapTotal = document.getElementById('heap-total');
-  const elHeapProgress = document.getElementById('heap-progress');
-  const elProcessRss = document.getElementById('process-rss');
+  const elRelayHost = document.getElementById('relay-host');
+  const elRelayAge = document.getElementById('relay-age');
+  const elRedisStatusBadge = document.getElementById('redis-status-badge');
   const elArchDisplay = document.getElementById('arch-display');
 
   // Specs & Cores
@@ -63,7 +61,6 @@
   const canvas = document.getElementById('telemetryChart');
   const ctx = canvas.getContext('2d');
 
-  // Helper: format percent offset for SVG circular rings
   function setProgress(circleEl, percent) {
     if (!circleEl) return;
     const clamped = Math.max(0, Math.min(100, percent));
@@ -71,81 +68,73 @@
     circleEl.style.strokeDashoffset = offset.toFixed(2);
   }
 
-  // Update UI with incoming metrics payload
   function updateDashboard(data) {
-    if (isPaused || !data) return;
+    if (!data || isPaused) return;
 
-    // Header & Info
-    if (data.system) {
-      elSystemHostname.textContent = data.system.hostname;
-      elSystemPlatform.textContent = `${data.system.platform} ${data.system.arch}`;
-      elSystemKernel.textContent = data.system.release;
+    // Host & System Header
+    const hostname = data.host || 'astral-node';
+    if (elSystemHostname) elSystemHostname.textContent = hostname;
+    if (elSystemPlatform) elSystemPlatform.textContent = `${data.platform || 'Linux'} ${data.arch || 'x64'}`;
+    if (elSystemKernel) elSystemKernel.textContent = data.release || 'Verified';
 
-      elSpecHostname.textContent = data.system.hostname;
-      elSpecPlatform.textContent = `${data.system.type} (${data.system.platform})`;
-      elSpecRelease.textContent = data.system.release;
-      elSpecArch.textContent = data.system.arch;
-    }
+    if (elSpecHostname) elSpecHostname.textContent = hostname;
+    if (elSpecPlatform) elSpecPlatform.textContent = `${data.platform || 'linux'} (${data.arch || 'x64'})`;
+    if (elSpecRelease) elSpecRelease.textContent = data.release || '--';
+    if (elSpecArch) elSpecArch.textContent = data.arch || 'x64';
+    if (elSpecNode) elSpecNode.textContent = data.cpuModel || 'Intel i5-6300U';
+    if (elSpecRam) elSpecRam.textContent = `${data.totalGB} GB (${data.freeGB} GB Free)`;
 
     // CPU Metrics
-    if (data.cpu) {
-      const cpuUsage = data.cpu.usagePercent || 0;
-      elCpuPercent.innerHTML = `${cpuUsage.toFixed(1)}<small>%</small>`;
-      setProgress(elCpuRingFill, cpuUsage);
+    const cpuVal = typeof data.cpuPercent === 'number' ? data.cpuPercent : 0;
+    if (elCpuPercent) elCpuPercent.innerHTML = `${cpuVal.toFixed(1)}<small>%</small>`;
+    setProgress(elCpuRingFill, cpuVal);
 
-      elCpuCoreCount.textContent = `${data.cpu.coreCount} Cores`;
-      elCoreCountTag.textContent = `${data.cpu.coreCount} Logical Cores`;
-      elCpuModel.textContent = data.cpu.model;
+    if (elCpuCoreCount) elCpuCoreCount.textContent = `${data.coresCount || 4} Cores`;
+    if (elCoreCountTag) elCoreCountTag.textContent = `${data.coresCount || 4} Logical Cores`;
+    if (elCpuModel) elCpuModel.textContent = data.cpuModel || 'Intel Processor';
 
-      if (data.cpu.loadAvg) {
-        elCpuLoadAvg.textContent = data.cpu.loadAvg.map(n => n.toFixed(2)).join(' • ');
-      }
-
-      // Render per-core cards
-      renderCores(data.cpu.cores);
+    if (elCpuLoadAvg && Array.isArray(data.loadavg)) {
+      elCpuLoadAvg.textContent = data.loadavg.map(n => Number(n).toFixed(2)).join(' • ');
     }
 
-    // Memory Metrics
-    if (data.memory) {
-      const ramUsage = data.memory.usagePercent || 0;
-      elRamPercent.innerHTML = `${ramUsage.toFixed(1)}<small>%</small>`;
-      setProgress(elRamRingFill, ramUsage);
-
-      elRamUsedTag.textContent = `${data.memory.usedGB} GB Used`;
-      elRamBreakdown.textContent = `${data.memory.usedGB} / ${data.memory.totalGB} GB`;
-      elMemoryBarFill.style.width = `${Math.min(100, ramUsage)}%`;
-      elSpecRam.textContent = `${data.memory.totalGB} GB (${data.memory.freeGB} GB Free)`;
+    if (data.coresUsage) {
+      renderCores(data.coresUsage);
     }
+
+    // Memory (RAM) Metrics
+    const ramVal = typeof data.ramPercent === 'number' ? data.ramPercent : 0;
+    if (elRamPercent) elRamPercent.innerHTML = `${ramVal.toFixed(1)}<small>%</small>`;
+    setProgress(elRamRingFill, ramVal);
+
+    if (elRamUsedTag) elRamUsedTag.textContent = `${data.usedGB} GB Used`;
+    if (elRamBreakdown) elRamBreakdown.textContent = `${data.usedGB} / ${data.totalGB} GB`;
+    if (elMemoryBarFill) elMemoryBarFill.style.width = `${Math.min(100, ramVal)}%`;
 
     // Uptime
-    if (data.uptime) {
-      elSystemUptime.textContent = data.uptime.systemFormatted;
-      elProcessUptime.textContent = data.uptime.processFormatted;
+    if (elSystemUptime) elSystemUptime.textContent = data.uptimeFormatted || `${Math.floor(data.uptime)}s`;
+    if (elProcessUptime) elProcessUptime.textContent = `${data.ageSeconds ?? 0}s latency`;
+    if (elProcessPid) elProcessPid.textContent = 'Upstash REST';
+
+    // Redis Relay
+    if (elRelayHost) elRelayHost.textContent = hostname;
+    if (elRelayAge) elRelayAge.textContent = `${data.ageSeconds ?? 0}s ago`;
+    if (elRedisStatusBadge) {
+      if ((data.ageSeconds ?? 0) <= 6) {
+        elRedisStatusBadge.textContent = 'Live Synced';
+        elRedisStatusBadge.className = 'badge success';
+      } else {
+        elRedisStatusBadge.textContent = `${data.ageSeconds}s ago`;
+        elRedisStatusBadge.className = 'badge';
+      }
     }
+    if (elArchDisplay) elArchDisplay.textContent = data.arch || 'x64';
 
-    // Process & Node info
-    if (data.process) {
-      elProcessPid.textContent = data.process.pid;
-      elNodeVersionBadge.textContent = data.process.nodeVersion;
-      elSpecNode.textContent = data.process.nodeVersion;
-      elArchDisplay.textContent = data.system?.arch || 'x64';
-
-      elHeapUsed.textContent = `${data.process.heapUsedMB} MB`;
-      elHeapTotal.textContent = `${data.process.heapTotalMB} MB`;
-      elProcessRss.textContent = `${data.process.rssMB} MB`;
-
-      const heapPct = data.process.heapTotalMB > 0
-        ? Math.round((data.process.heapUsedMB / data.process.heapTotalMB) * 100)
-        : 10;
-      elHeapProgress.style.width = `${Math.min(100, heapPct)}%`;
-    }
-
-    // Add to chart history
-    const now = new Date(data.epoch || Date.now());
+    // History data for canvas chart
+    const now = new Date(data.timestamp || Date.now());
     historyData.push({
       time: now,
-      cpu: data.cpu ? data.cpu.usagePercent : 0,
-      ram: data.memory ? data.memory.usagePercent : 0
+      cpu: cpuVal,
+      ram: ramVal
     });
 
     if (historyData.length > MAX_HISTORY) {
@@ -154,13 +143,22 @@
 
     drawChart();
 
-    // Footer update
-    elLastUpdatedTime.textContent = `Last update: ${now.toLocaleTimeString()}`;
+    // Footer
+    if (elLastUpdatedTime) {
+      elLastUpdatedTime.textContent = `Redis sync: ${now.toLocaleTimeString()}`;
+    }
+
+    // Status label
+    if (elStatusLabel) {
+      elStatusLabel.textContent = 'SYNCED (REDIS 3s)';
+      elStreamStatus.style.color = 'var(--accent-emerald)';
+      elStreamStatus.style.background = 'rgba(16, 185, 129, 0.1)';
+      elStreamStatus.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+    }
   }
 
-  // Render individual CPU cores
   function renderCores(cores) {
-    if (!cores || !cores.length) return;
+    if (!cores || !cores.length || !elCoresContainer) return;
 
     elCoresContainer.innerHTML = '';
     cores.forEach((core) => {
@@ -178,7 +176,7 @@
         <div class="core-header-row">
           <div>
             <span class="core-name">Core #${core.coreIndex}</span>
-            <span class="core-speed">${core.speedMHz} MHz</span>
+            <span class="core-speed">${core.speedMHz || '--'} MHz</span>
           </div>
           <span class="core-percent" style="color: ${barColor}">${core.usagePercent.toFixed(1)}%</span>
         </div>
@@ -190,8 +188,8 @@
     });
   }
 
-  // Canvas Telemetry Chart Drawing
   function setupCanvasDPI() {
+    if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     canvas.width = rect.width * dpr;
@@ -201,13 +199,13 @@
   }
 
   function drawChart() {
+    if (!canvas || !ctx) return;
     const rect = canvas.getBoundingClientRect();
     const width = rect.width;
     const height = 220;
 
     ctx.clearRect(0, 0, width, height);
 
-    // Chart margins
     const padLeft = 40;
     const padRight = 20;
     const padTop = 20;
@@ -215,35 +213,32 @@
     const chartW = width - padLeft - padRight;
     const chartH = height - padTop - padBottom;
 
-    // Draw grid lines
+    // Y Grid lines
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
     ctx.lineWidth = 1;
     ctx.font = '10px "JetBrains Mono", monospace';
     ctx.fillStyle = '#64748b';
     ctx.textAlign = 'right';
 
-    const yLevels = [0, 25, 50, 75, 100];
-    yLevels.forEach((level) => {
+    [0, 25, 50, 75, 100].forEach((level) => {
       const y = padTop + chartH - (level / 100) * chartH;
       ctx.beginPath();
       ctx.moveTo(padLeft, y);
       ctx.lineTo(width - padRight, y);
       ctx.stroke();
-
       ctx.fillText(`${level}%`, padLeft - 8, y + 3);
     });
 
     if (historyData.length < 2) {
       ctx.fillStyle = '#64748b';
       ctx.textAlign = 'center';
-      ctx.fillText('Collecting real-time data...', width / 2, height / 2);
+      ctx.fillText('Collecting Upstash Redis telemetry...', width / 2, height / 2);
       return;
     }
 
     const stepX = chartW / (MAX_HISTORY - 1);
     const startOffset = MAX_HISTORY - historyData.length;
 
-    // Helper function to plot a metric line and gradient fill
     function plotSeries(key, strokeColor, glowColor, fillGradientTop, fillGradientBottom) {
       const points = historyData.map((d, i) => {
         const x = padLeft + (startOffset + i) * stepX;
@@ -252,7 +247,6 @@
         return { x, y };
       });
 
-      // Area fill
       const grad = ctx.createLinearGradient(0, padTop, 0, padTop + chartH);
       grad.addColorStop(0, fillGradientTop);
       grad.addColorStop(1, fillGradientBottom);
@@ -265,7 +259,6 @@
       ctx.fillStyle = grad;
       ctx.fill();
 
-      // Line stroke
       ctx.beginPath();
       ctx.strokeStyle = strokeColor;
       ctx.lineWidth = 2.5;
@@ -277,11 +270,8 @@
         else ctx.lineTo(p.x, p.y);
       });
       ctx.stroke();
-
-      // Reset shadow
       ctx.shadowBlur = 0;
 
-      // Draw latest endpoint pulse
       const latest = points[points.length - 1];
       ctx.beginPath();
       ctx.arc(latest.x, latest.y, 4, 0, Math.PI * 2);
@@ -292,25 +282,13 @@
       ctx.stroke();
     }
 
-    // Plot RAM (background)
-    plotSeries(
-      'ram',
-      '#a855f7',
-      'rgba(168, 85, 247, 0.5)',
-      'rgba(168, 85, 247, 0.25)',
-      'rgba(168, 85, 247, 0.0)'
-    );
+    // Plot RAM
+    plotSeries('ram', '#a855f7', 'rgba(168, 85, 247, 0.5)', 'rgba(168, 85, 247, 0.25)', 'rgba(168, 85, 247, 0.0)');
 
-    // Plot CPU (foreground)
-    plotSeries(
-      'cpu',
-      '#00f0ff',
-      'rgba(0, 240, 255, 0.6)',
-      'rgba(0, 240, 255, 0.3)',
-      'rgba(0, 240, 255, 0.0)'
-    );
+    // Plot CPU
+    plotSeries('cpu', '#00f0ff', 'rgba(0, 240, 255, 0.6)', 'rgba(0, 240, 255, 0.3)', 'rgba(0, 240, 255, 0.0)');
 
-    // X-Axis time markers
+    // X Time Markers
     ctx.fillStyle = '#64748b';
     ctx.textAlign = 'center';
     const firstPoint = historyData[0];
@@ -321,90 +299,46 @@
     }
   }
 
-  // Setup Server-Sent Events stream
-  function initSSE() {
-    if (eventSource) {
-      eventSource.close();
-    }
-
-    elStatusLabel.textContent = 'CONNECTING';
-    elStreamStatus.style.background = 'rgba(245, 158, 11, 0.1)';
-    elStreamStatus.style.borderColor = 'rgba(245, 158, 11, 0.3)';
-    elStreamStatus.style.color = 'var(--accent-amber)';
-
-    eventSource = new EventSource('/api/stream');
-
-    eventSource.onopen = function () {
-      elStatusLabel.textContent = 'LIVE (SSE)';
-      elStreamStatus.style.background = 'rgba(16, 185, 129, 0.1)';
-      elStreamStatus.style.borderColor = 'rgba(16, 185, 129, 0.3)';
-      elStreamStatus.style.color = 'var(--accent-emerald)';
-      if (fallbackInterval) {
-        clearInterval(fallbackInterval);
-        fallbackInterval = null;
-      }
-    };
-
-    eventSource.onmessage = function (event) {
-      try {
-        const data = JSON.parse(event.data);
-        updateDashboard(data);
-      } catch (err) {
-        console.error('Failed to parse SSE payload:', err);
-      }
-    };
-
-    eventSource.onerror = function () {
-      elStatusLabel.textContent = 'POLLING';
-      elStreamStatus.style.background = 'rgba(245, 158, 11, 0.1)';
-      elStreamStatus.style.borderColor = 'rgba(245, 158, 11, 0.3)';
-      elStreamStatus.style.color = 'var(--accent-amber)';
-
-      // Switch to polling if SSE encounters issues
-      if (!fallbackInterval) {
-        fallbackInterval = setInterval(fetchMetrics, 1000);
-      }
-    };
-  }
-
-  // Fetch metrics via REST fallback
-  async function fetchMetrics() {
+  async function fetchTelemetry() {
+    if (isPaused) return;
     try {
-      const res = await fetch('/api/metrics');
+      const res = await fetch('/api/telemetry');
       if (res.ok) {
         const data = await res.json();
         updateDashboard(data);
+      } else {
+        console.warn('Telemetry request returned HTTP', res.status);
       }
-    } catch (e) {
-      console.warn('Metrics polling error:', e);
+    } catch (err) {
+      console.error('Failed to fetch /api/telemetry:', err);
     }
   }
 
   // Toggle pause/resume
-  elToggleStreamBtn.addEventListener('click', () => {
-    isPaused = !isPaused;
-    if (isPaused) {
-      elPauseBtnText.textContent = 'Resume';
-      elStatusLabel.textContent = 'PAUSED';
-      elStreamStatus.style.color = 'var(--text-muted)';
-      elStreamStatus.style.background = 'rgba(255, 255, 255, 0.05)';
-      elStreamStatus.style.borderColor = 'var(--border-subtle)';
-    } else {
-      elPauseBtnText.textContent = 'Pause';
-      elStatusLabel.textContent = 'LIVE (SSE)';
-      elStreamStatus.style.color = 'var(--accent-emerald)';
-      elStreamStatus.style.background = 'rgba(16, 185, 129, 0.1)';
-      elStreamStatus.style.borderColor = 'rgba(16, 185, 129, 0.3)';
-    }
-  });
+  if (elToggleStreamBtn) {
+    elToggleStreamBtn.addEventListener('click', () => {
+      isPaused = !isPaused;
+      if (isPaused) {
+        if (elPauseBtnText) elPauseBtnText.textContent = 'Resume';
+        if (elStatusLabel) elStatusLabel.textContent = 'PAUSED';
+        elStreamStatus.style.color = 'var(--text-muted)';
+        elStreamStatus.style.background = 'rgba(255, 255, 255, 0.05)';
+        elStreamStatus.style.borderColor = 'var(--border-subtle)';
+      } else {
+        if (elPauseBtnText) elPauseBtnText.textContent = 'Pause';
+        if (elStatusLabel) elStatusLabel.textContent = 'SYNCING';
+        fetchTelemetry();
+      }
+    });
+  }
 
-  // Handle window resize for canvas
   window.addEventListener('resize', () => {
     setupCanvasDPI();
     drawChart();
   });
 
-  // Init
+  // Start polling
   setupCanvasDPI();
-  initSSE();
+  fetchTelemetry();
+  pollTimer = setInterval(fetchTelemetry, POLL_CADENCE_MS);
 })();

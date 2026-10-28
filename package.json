@@ -1,11 +1,12 @@
 {
   "name": "astral-node-telemetry",
-  "version": "1.0.0",
-  "description": "High-performance Node.js live system status dashboard streaming real-time CPU, RAM, and server telemetry for astral-node.",
+  "version": "1.1.0",
+  "description": "High-performance Node.js live system status dashboard streaming real-time CPU, RAM, and server telemetry for astral-node via Upstash Redis.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "daemon": "node daemon.js",
     "build": "echo 'Build complete'"
   },
   "keywords": [
@@ -16,6 +17,7 @@
     "ram",
     "server-metrics",
     "nodejs",
+    "upstash-redis",
     "astral-node"
   ],
   "author": "Pavan <Pavan.sankiliraj@gmail.com>",
